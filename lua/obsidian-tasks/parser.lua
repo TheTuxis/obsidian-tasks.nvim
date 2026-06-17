@@ -44,8 +44,16 @@ end
 function M.parse_file_lines(lines, file_path)
   local tasks = {}
   local current_heading = nil
+  local in_code_block = false
 
   for i, line in ipairs(lines) do
+    -- Toggle fenced code block state (``` or ~~~, with optional language tag)
+    if line:match("^%s*```") or line:match("^%s*~~~") then
+      in_code_block = not in_code_block
+    end
+
+    if in_code_block then goto continue end
+
     -- Track ATX headings
     local heading_text = line:match("^#+%s+(.+)$")
     if heading_text then
@@ -56,6 +64,8 @@ function M.parse_file_lines(lines, file_path)
     if t then
       table.insert(tasks, t)
     end
+
+    ::continue::
   end
 
   return tasks
