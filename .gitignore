@@ -1,0 +1,14 @@
+# Neovim swap files
+*.swp
+*.swo
+.netrwhist
+
+# Lua
+luac.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test vault (local only)
+test-vault/
