@@ -36,12 +36,16 @@ function M.setup(opts)
     pattern = "*.md",
     once    = true,
     callback = function()
-      -- Rebuild in background (schedule so it doesn't block startup)
-      vim.schedule(function()
-        index.rebuild()
-      end)
+      vim.schedule(function() index.rebuild() end)
     end,
   })
+
+  -- When loaded lazily via ft = "markdown", BufEnter has already fired for
+  -- the current buffer before the autocmd above was registered. Detect this
+  -- and trigger the initial rebuild immediately.
+  if vim.bo.filetype == "markdown" then
+    vim.schedule(function() index.rebuild() end)
+  end
 end
 
 -- Expose index and query for external use
