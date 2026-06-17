@@ -243,6 +243,16 @@ local function make_date_filter(get_date, expr)
   end
 end
 
+-- Urgency score (mirrors sorter formula)
+local function urgency_score(t)
+  local s = t.priority * 10
+  if t.due_date then
+    local diff = (days(t.due_date) - today()) / 86400
+    if diff < 0 then s = s + 20 elseif diff == 0 then s = s + 10 end
+  end
+  return s
+end
+
 -- Priority name → level
 local PRIORITY_LEVELS = {
   highest = task_mod.PRIORITY.HIGHEST,
@@ -429,6 +439,171 @@ function M.parse(line)
     if date_expr then
       local fn = make_date_filter(getter, date_expr)
       if fn then return fn end
+    end
+  end
+
+  -- urgency above / below / is
+  local urgency_above = lower:match("^urgency%s+above%s+([%d%.]+)$")
+  if urgency_above then
+    local thr = tonumber(urgency_above)
+    if thr then return function(t) return urgency_score(t) > thr end end
+  end
+
+  local urgency_below = lower:match("^urgency%s+below%s+([%d%.]+)$")
+  if urgency_below then
+    local thr = tonumber(urgency_below)
+    if thr then return function(t) return urgency_score(t) < thr end end
+  end
+
+  local urgency_eq = lower:match("^urgency%s+is%s+([%d%.]+)$")
+  if urgency_eq then
+    local thr = tonumber(urgency_eq)
+    if thr then return function(t) return urgency_score(t) == thr end end
+  end
+
+  -- status.name is X / includes X
+  local status_name_is = lower:match("^status%.name%s+is%s+(.+)$")
+  if status_name_is then
+    local name_map = {
+      todo        = task_mod.STATUS.TODO,
+      done        = task_mod.STATUS.DONE,
+      ["in progress"] = task_mod.STATUS.IN_PROGRESS,
+      in_progress = task_mod.STATUS.IN_PROGRESS,
+      cancelled   = task_mod.STATUS.CANCELLED,
+      forwarded   = task_mod.STATUS.FORWARDED,
+    }
+    local s = name_map[status_name_is]
+    if s then return function(t) return t.status == s end end
+  end
+
+  local status_name_inc = lower:match("^status%.name%s+includes%s+(.+)$")
+  if status_name_inc then
+    local needle = status_name_inc
+    local STATUS_NAMES = {
+      [task_mod.STATUS.TODO]        = "todo",
+      [task_mod.STATUS.DONE]        = "done",
+      [task_mod.STATUS.IN_PROGRESS] = "in progress",
+      [task_mod.STATUS.CANCELLED]   = "cancelled",
+      [task_mod.STATUS.FORWARDED]   = "forwarded",
+    }
+    return function(t)
+      local name = STATUS_NAMES[t.status] or ""
+      return name:find(needle, 1, true) ~= nil
+    end
+  end
+
+  -- folder includes / does not include
+  local folder_inc = line:match("^[Ff]older%s+includes%s+(.+)$")
+  if folder_inc then
+    local needle = folder_inc:lower()
+    return function(t)
+      local dir = vim.fn.fnamemodify(t.file_path, ":h"):lower()
+      return dir:find(needle, 1, true) ~= nil
+    end
+  end
+
+  local folder_exc = line:match("^[Ff]older%s+does%s+not%s+include%s+(.+)$")
+  if folder_exc then
+    local needle = folder_exc:lower()
+    return function(t)
+      local dir = vim.fn.fnamemodify(t.file_path, ":h"):lower()
+      return dir:find(needle, 1, true) == nil
+    end
+  end
+
+  -- root includes / does not include (first directory component of the relative path)
+  local root_inc = line:match("^[Rr]oot%s+includes%s+(.+)$")
+  if root_inc then
+    local needle = root_inc:lower()
+    return function(t)
+      local rel = vim.fn.fnamemodify(t.file_path, ":.")
+      local first = rel:match("^([^/]+)/") or ""
+      return first:lower():find(needle, 1, true) ~= nil
+    end
+  end
+
+  local root_exc = line:match("^[Rr]oot%s+does%s+not%s+include%s+(.+)$")
+  if root_exc then
+    local needle = root_exc:lower()
+    return function(t)
+      local rel = vim.fn.fnamemodify(t.file_path, ":.")
+      local first = rel:match("^([^/]+)/") or ""
+      return first:lower():find(needle, 1, true) == nil
+    end
+  end
+
+  -- backlink includes / does not include (filename > heading)
+  local backlink_inc = line:match("^[Bb]acklink%s+includes%s+(.+)$")
+  if backlink_inc then
+    local needle = backlink_inc:lower()
+    return function(t)
+      local fname = vim.fn.fnamemodify(t.file_path, ":t:r"):lower()
+      local bl = t.heading and (fname .. " > " .. t.heading:lower()) or fname
+      return bl:find(needle, 1, true) ~= nil
+    end
+  end
+
+  local backlink_exc = line:match("^[Bb]acklink%s+does%s+not%s+include%s+(.+)$")
+  if backlink_exc then
+    local needle = backlink_exc:lower()
+    return function(t)
+      local fname = vim.fn.fnamemodify(t.file_path, ":t:r"):lower()
+      local bl = t.heading and (fname .. " > " .. t.heading:lower()) or fname
+      return bl:find(needle, 1, true) == nil
+    end
+  end
+
+  -- id is X / id includes X
+  local id_is = lower:match("^id%s+is%s+(.+)$")
+  if id_is then
+    return function(t) return t.id == id_is end
+  end
+
+  local id_inc = lower:match("^id%s+includes%s+(.+)$")
+  if id_inc then
+    return function(t) return t.id ~= nil and t.id:find(id_inc, 1, true) ~= nil end
+  end
+
+  -- depends on includes X
+  local dep_inc = lower:match("^depends%s+on%s+includes%s+(.+)$")
+  if dep_inc then
+    return function(t)
+      if not t.depends_on then return false end
+      for _, dep in ipairs(t.depends_on) do
+        if dep:find(dep_inc, 1, true) then return true end
+      end
+      return false
+    end
+  end
+
+  -- regex filters for tags / path / heading / filename
+  local tags_regex = line:match("^[Tt]ags%s+regex%s+matches%s+/(.+)/$")
+  if tags_regex then
+    return function(t)
+      for _, tag in ipairs(t.tags) do
+        if tag:match(tags_regex) then return true end
+      end
+      return false
+    end
+  end
+
+  local path_regex = line:match("^[Pp]ath%s+regex%s+matches%s+/(.+)/$")
+  if path_regex then
+    return function(t) return t.file_path:match(path_regex) ~= nil end
+  end
+
+  local heading_regex = line:match("^[Hh]eading%s+regex%s+matches%s+/(.+)/$")
+  if heading_regex then
+    return function(t)
+      if not t.heading then return false end
+      return t.heading:match(heading_regex) ~= nil
+    end
+  end
+
+  local fname_regex = line:match("^[Ff]ilename%s+regex%s+matches%s+/(.+)/$")
+  if fname_regex then
+    return function(t)
+      return vim.fn.fnamemodify(t.file_path, ":t:r"):match(fname_regex) ~= nil
     end
   end
 

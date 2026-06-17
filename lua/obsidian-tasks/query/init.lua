@@ -8,12 +8,13 @@ local M = {}
 -- Parse a query block text into a query spec table
 function M.parse(query_text)
   local spec = {
-    filters  = {},
-    sorts    = {},
-    groups   = {},
-    limit    = nil,
-    hide     = {},
-    errors   = {},
+    filters      = {},
+    sorts        = {},
+    groups       = {},
+    limit        = nil,
+    limit_groups = nil,
+    hide         = {},
+    errors       = {},
   }
 
   local lines = vim.split(query_text, "\n", { plain = true })
@@ -45,6 +46,13 @@ function M.parse(query_text)
       or line:match("^[Ll]imit%s+(%d+)")
     if limit_n then
       spec.limit = tonumber(limit_n)
+      goto continue
+    end
+
+    -- limit groups to N
+    local limit_g = line:match("^[Ll]imit%s+groups%s+to%s+(%d+)")
+    if limit_g then
+      spec.limit_groups = tonumber(limit_g)
       goto continue
     end
 
@@ -137,7 +145,14 @@ function M.execute(spec, all_tasks)
   -- 3. Group
   local groups = grouper_mod.apply(sorted, spec.groups)
 
-  -- 4. Limit
+  -- 4a. Limit groups
+  if spec.limit_groups and #groups > spec.limit_groups then
+    local trimmed = {}
+    for i = 1, spec.limit_groups do trimmed[i] = groups[i] end
+    groups = trimmed
+  end
+
+  -- 4b. Limit tasks
   if spec.limit then
     local total = 0
     for _, grp in ipairs(groups) do
