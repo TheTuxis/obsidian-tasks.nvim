@@ -11,6 +11,35 @@ local function today()
   return task_mod.today_days()
 end
 
+local function week_start(t)
+  local wday = tonumber(os.date("%w", t))  -- 0=Sun...6=Sat
+  return t - wday * 86400
+end
+
+local function month_start(t)
+  local d = os.date("*t", t)
+  return os.time({ year = d.year, month = d.month, day = 1, hour = 0, min = 0, sec = 0 })
+end
+
+local function quarter_start(t)
+  local d = os.date("*t", t)
+  local qm = math.floor((d.month - 1) / 3) * 3 + 1
+  return os.time({ year = d.year, month = qm, day = 1, hour = 0, min = 0, sec = 0 })
+end
+
+local function year_start(t)
+  local d = os.date("*t", t)
+  return os.time({ year = d.year, month = 1, day = 1, hour = 0, min = 0, sec = 0 })
+end
+
+local function add_months(t, n)
+  local d = os.date("*t", t)
+  local total = d.month - 1 + n
+  local y = d.year + math.floor(total / 12)
+  local m = total % 12 + 1
+  return os.time({ year = y, month = m, day = d.day, hour = 0, min = 0, sec = 0 })
+end
+
 local function parse_relative_date(expr)
   -- Returns an os.time() value or nil
   local t = today()
@@ -54,10 +83,106 @@ local function parse_relative_date(expr)
     return t - diff * 86400
   end
 
+  -- "this/next/last week" (Sunday–Saturday)
+  if lower == "this week" then
+    local ws = week_start(t)
+    return { start = ws, stop = ws + 6 * 86400 }
+  end
+  if lower == "next week" then
+    local ws = week_start(t) + 7 * 86400
+    return { start = ws, stop = ws + 6 * 86400 }
+  end
+  if lower == "last week" then
+    local ws = week_start(t) - 7 * 86400
+    return { start = ws, stop = ws + 6 * 86400 }
+  end
+
+  -- "this/next/last month"
+  if lower == "this month" then
+    local ms = month_start(t)
+    return { start = ms, stop = add_months(ms, 1) - 86400 }
+  end
+  if lower == "next month" then
+    local ms = add_months(month_start(t), 1)
+    return { start = ms, stop = add_months(ms, 1) - 86400 }
+  end
+  if lower == "last month" then
+    local ms = add_months(month_start(t), -1)
+    return { start = ms, stop = month_start(t) - 86400 }
+  end
+
+  -- "this/next/last quarter"
+  if lower == "this quarter" then
+    local qs = quarter_start(t)
+    return { start = qs, stop = add_months(qs, 3) - 86400 }
+  end
+  if lower == "next quarter" then
+    local qs = add_months(quarter_start(t), 3)
+    return { start = qs, stop = add_months(qs, 3) - 86400 }
+  end
+  if lower == "last quarter" then
+    local qs = add_months(quarter_start(t), -3)
+    return { start = qs, stop = quarter_start(t) - 86400 }
+  end
+
+  -- "this/next/last year"
+  if lower == "this year" then
+    local ys = year_start(t)
+    return { start = ys, stop = add_months(ys, 12) - 86400 }
+  end
+  if lower == "next year" then
+    local ys = add_months(year_start(t), 12)
+    return { start = ys, stop = add_months(ys, 12) - 86400 }
+  end
+  if lower == "last year" then
+    local ys = add_months(year_start(t), -12)
+    return { start = ys, stop = year_start(t) - 86400 }
+  end
+
+  -- Two-date range: YYYY-MM-DD YYYY-MM-DD
+  local y1, m1, d1, y2, m2, d2 =
+    expr:match("^(%d%d%d%d)-(%d%d)-(%d%d)%s+(%d%d%d%d)-(%d%d)-(%d%d)$")
+  if y1 then
+    return {
+      start = os.time({ year=tonumber(y1), month=tonumber(m1), day=tonumber(d1), hour=0, min=0, sec=0 }),
+      stop  = os.time({ year=tonumber(y2), month=tonumber(m2), day=tonumber(d2), hour=0, min=0, sec=0 }),
+    }
+  end
+
   -- YYYY-MM-DD
   local y, mo, d = expr:match("^(%d%d%d%d)-(%d%d)-(%d%d)$")
   if y then
     return os.time({ year=tonumber(y), month=tonumber(mo), day=tonumber(d), hour=0, min=0, sec=0 })
+  end
+
+  -- ISO week: YYYY-Www
+  local iso_y, iso_w = expr:match("^(%d%d%d%d)-[Ww](%d+)$")
+  if iso_y then
+    local iy, iw = tonumber(iso_y), tonumber(iso_w)
+    -- ISO week 1 contains Jan 4; its Monday is the week1 start
+    local jan4 = os.time({ year=iy, month=1, day=4, hour=0, min=0, sec=0 })
+    local jan4_wday = tonumber(os.date("%w", jan4))
+    local iso_dow = jan4_wday == 0 and 7 or jan4_wday  -- 1=Mon...7=Sun
+    local week1_mon = jan4 - (iso_dow - 1) * 86400
+    local ws = week1_mon + (iw - 1) * 7 * 86400
+    return { start = ws, stop = ws + 6 * 86400 }
+  end
+
+  -- ISO quarter: YYYY-Qn
+  local iso_qy, iso_qn = expr:match("^(%d%d%d%d)-[Qq]([1-4])$")
+  if iso_qy then
+    local iy, iq = tonumber(iso_qy), tonumber(iso_qn)
+    local qm = (iq - 1) * 3 + 1
+    local qs = os.time({ year=iy, month=qm, day=1, hour=0, min=0, sec=0 })
+    return { start = qs, stop = add_months(qs, 3) - 86400 }
+  end
+
+  -- ISO month: YYYY-MM
+  local iso_my, iso_mm = expr:match("^(%d%d%d%d)-(%d%d)$")
+  if iso_my then
+    local iy, im = tonumber(iso_my), tonumber(iso_mm)
+    local ms = os.time({ year=iy, month=im, day=1, hour=0, min=0, sec=0 })
+    return { start = ms, stop = add_months(ms, 1) - 86400 }
   end
 
   return nil
@@ -93,6 +218,19 @@ local function make_date_filter(get_date, expr)
 
   local target = parse_relative_date(rest)
   if not target then return nil end
+
+  -- Range target (this week, next month, ISO week/quarter/month, two-date range, etc.)
+  if type(target) == "table" then
+    return function(t)
+      local d = days(get_date(t))
+      if not d then return false end
+      if mode == "before"       then return d < target.start end
+      if mode == "after"        then return d > target.stop end
+      if mode == "on_or_before" then return d <= target.stop end
+      if mode == "on_or_after"  then return d >= target.start end
+      return d >= target.start and d <= target.stop
+    end
+  end
 
   return function(t)
     local d = days(get_date(t))

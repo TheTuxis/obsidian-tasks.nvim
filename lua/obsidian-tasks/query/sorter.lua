@@ -90,6 +90,30 @@ local COMPARATORS = {
     if ra == rb then return 0 end
     return ra < rb and -1 or 1
   end,
+  done = function(a, b)
+    local da, db = days(a.done_date), days(b.done_date)
+    if da == db then return 0 end
+    if da == nil then return 1 end
+    if db == nil then return -1 end
+    return da < db and -1 or 1
+  end,
+  cancelled = function(a, b)
+    local da, db = days(a.cancelled_date), days(b.cancelled_date)
+    if da == db then return 0 end
+    if da == nil then return 1 end
+    if db == nil then return -1 end
+    return da < db and -1 or 1
+  end,
+  id = function(a, b)
+    local ia, ib = a.id or "", b.id or ""
+    if ia == ib then return 0 end
+    return ia < ib and -1 or 1
+  end,
+  heading = function(a, b)
+    local ha, hb = a.heading or "", b.heading or ""
+    if ha == hb then return 0 end
+    return ha < hb and -1 or 1
+  end,
 }
 
 -- Parse "sort by <field> [reverse]" and return a comparator spec or nil
