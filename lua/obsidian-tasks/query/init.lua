@@ -9,10 +9,13 @@ local M = {}
 function M.parse(query_text)
   local spec = {
     filters      = {},
+    filter_texts = {},
     sorts        = {},
     groups       = {},
     limit        = nil,
     limit_groups = nil,
+    explain      = false,
+    short        = false,
     hide         = {},
     errors       = {},
   }
@@ -93,9 +96,11 @@ function M.parse(query_text)
       goto continue
     end
 
-    -- ignore global query (placeholder)
+    -- query instruction flags
     if line:lower() == "ignore global query" then goto continue end
-    if line:lower() == "explain"             then goto continue end
+    if line:lower() == "explain" then spec.explain = true ; goto continue end
+    if line:lower() == "short"   then spec.short   = true ; goto continue end
+    if line:lower() == "full"    then spec.short   = false; goto continue end
 
     -- Try boolean expression first, then plain filter
     local fn
@@ -113,6 +118,7 @@ function M.parse(query_text)
     end
     if fn then
       table.insert(spec.filters, fn)
+      table.insert(spec.filter_texts, line)
     else
       table.insert(spec.errors, "Unrecognized: " .. line)
     end
@@ -126,17 +132,35 @@ end
 -- Execute a parsed query spec against a list of tasks
 -- Returns list of { key, tasks[] } (groups)
 function M.execute(spec, all_tasks)
-  -- 1. Filter
-  local filtered = {}
-  for _, t in ipairs(all_tasks) do
-    local pass = true
-    for _, fn in ipairs(spec.filters) do
-      if not fn(t) then
-        pass = false
-        break
+  -- 1. Filter (with optional explain tracking)
+  local filtered
+  if spec.explain then
+    local current = all_tasks
+    local explain = {
+      string.format("Explain: %d filter(s) applied to %d tasks",
+        #spec.filters, #all_tasks),
+    }
+    for i, fn in ipairs(spec.filters) do
+      local before = #current
+      local next_tasks = {}
+      for _, t in ipairs(current) do
+        if fn(t) then table.insert(next_tasks, t) end
       end
+      current = next_tasks
+      local label = spec.filter_texts[i] or ("filter " .. i)
+      table.insert(explain, string.format("  %d. %s → %d tasks", i, label, #current))
     end
-    if pass then table.insert(filtered, t) end
+    filtered = current
+    spec.explain_output = explain
+  else
+    filtered = {}
+    for _, t in ipairs(all_tasks) do
+      local pass = true
+      for _, fn in ipairs(spec.filters) do
+        if not fn(t) then pass = false; break end
+      end
+      if pass then table.insert(filtered, t) end
+    end
   end
 
   -- 2. Sort

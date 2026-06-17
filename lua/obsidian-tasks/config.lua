@@ -1,8 +1,9 @@
 local M = {}
 
 M.defaults = {
-  vault_path = nil,
-  date_format = "%Y-%m-%d",
+  vault_path   = nil,
+  date_format  = "%Y-%m-%d",
+  global_query = "",
   keymaps = {
     toggle     = "<leader>tt",
     create     = "<leader>tc",
