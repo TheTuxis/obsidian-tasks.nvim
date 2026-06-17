@@ -1,4 +1,5 @@
 local filter_mod  = require("obsidian-tasks.query.filter")
+local boolean_mod = require("obsidian-tasks.query.boolean")
 local sorter_mod  = require("obsidian-tasks.query.sorter")
 local grouper_mod = require("obsidian-tasks.query.grouper")
 
@@ -88,8 +89,20 @@ function M.parse(query_text)
     if line:lower() == "ignore global query" then goto continue end
     if line:lower() == "explain"             then goto continue end
 
-    -- Try as filter
-    local fn = filter_mod.parse(line)
+    -- Try boolean expression first, then plain filter
+    local fn
+    if boolean_mod.is_boolean(line) then
+      local bool_errors
+      fn, bool_errors = boolean_mod.parse(line, filter_mod.parse)
+      if bool_errors then
+        for _, e in ipairs(bool_errors) do
+          table.insert(spec.errors, e)
+        end
+      end
+    end
+    if not fn then
+      fn = filter_mod.parse(line)
+    end
     if fn then
       table.insert(spec.filters, fn)
     else
