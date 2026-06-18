@@ -154,6 +154,10 @@ function M.register(cfg)
     require("obsidian-tasks.ui.editor").open_at_cursor()
   end, { desc = "Edit task metadata in a floating form" })
 
+  vim.api.nvim_create_user_command("TasksCapture", function()
+    require("obsidian-tasks.capture").open()
+  end, { desc = "Quick-capture a task to today's daily file" })
+
   -- Keymaps (only in markdown buffers)
   local km = cfg.keymaps or {}
 
@@ -174,6 +178,9 @@ function M.register(cfg)
   map(km.edit, function()
     require("obsidian-tasks.ui.editor").open_at_cursor()
   end, "Tasks: edit task")
+  map(km.capture, function()
+    require("obsidian-tasks.capture").open()
+  end, "Tasks: quick capture to daily file")
 end
 
 return M

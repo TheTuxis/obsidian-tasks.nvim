@@ -18,6 +18,7 @@ function M.setup(opts)
   commands.register(cfg)
   renderer.setup(cfg)
   require("obsidian-tasks.ui.editor").setup(cfg)
+  require("obsidian-tasks.capture").setup(cfg)
 
   -- Autocmds
   local group = vim.api.nvim_create_augroup("ObsidianTasks", { clear = true })
