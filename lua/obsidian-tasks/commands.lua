@@ -150,6 +150,10 @@ function M.register(cfg)
     require("obsidian-tasks.ui.picker").open()
   end, { desc = "Open Telescope task picker" })
 
+  vim.api.nvim_create_user_command("TasksEdit", function()
+    require("obsidian-tasks.ui.editor").open_at_cursor()
+  end, { desc = "Edit task metadata in a floating form" })
+
   -- Keymaps (only in markdown buffers)
   local km = cfg.keymaps or {}
 
@@ -164,9 +168,12 @@ function M.register(cfg)
   map(km.open_query, function()
     require("obsidian-tasks.renderer").open_query_at_cursor()
   end, "Tasks: open query")
-  map(km.picker,     function()
+  map(km.picker, function()
     require("obsidian-tasks.ui.picker").open()
   end, "Tasks: open picker")
+  map(km.edit, function()
+    require("obsidian-tasks.ui.editor").open_at_cursor()
+  end, "Tasks: edit task")
 end
 
 return M

@@ -9,6 +9,7 @@ M.defaults = {
     create     = "<leader>tc",
     open_query = "<leader>tq",
     picker     = "<leader>tf",
+    edit       = "<leader>te",
   },
   telescope = true,
   floating_window = {
