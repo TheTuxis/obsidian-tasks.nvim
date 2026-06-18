@@ -19,11 +19,14 @@ local function format_entry(t)
   return string.format("%s %s%s%s  [[%s:%d]]", status, t.description, pri, due, rel, t.line_number)
 end
 
-function M.open()
+function M.open(opts)
   if not has_telescope() then
     vim.notify("telescope.nvim is required for the task picker", vim.log.levels.ERROR)
     return
   end
+
+  opts = opts or {}
+  local show_all = opts.show_all or false
 
   local telescope   = require("telescope")
   local pickers     = require("telescope.pickers")
@@ -32,12 +35,19 @@ function M.open()
   local actions     = require("telescope.actions")
   local action_state = require("telescope.actions.state")
 
-  local all_tasks = index.all_tasks()
+  local tasks = index.all_tasks()
+  if not show_all then
+    tasks = vim.tbl_filter(function(t)
+      return t.status ~= task_mod.STATUS.DONE and t.status ~= task_mod.STATUS.CANCELLED
+    end, tasks)
+  end
+
+  local title = show_all and "Tasks (all)  <C-a> active only" or "Tasks (active)  <C-a> show all"
 
   pickers.new({}, {
-    prompt_title = "Tasks",
+    prompt_title = title,
     finder = finders.new_table({
-      results = all_tasks,
+      results = tasks,
       entry_maker = function(t)
         return {
           value   = t,
@@ -65,6 +75,16 @@ function M.open()
         local t = entry.value
         actions.close(prompt_bufnr)
         require("obsidian-tasks.commands").toggle_task_in_file(t)
+      end)
+
+      -- <C-a>: toggle between active-only and all tasks
+      map("i", "<C-a>", function()
+        actions.close(prompt_bufnr)
+        M.open({ show_all = not show_all })
+      end)
+      map("n", "<C-a>", function()
+        actions.close(prompt_bufnr)
+        M.open({ show_all = not show_all })
       end)
 
       return true
